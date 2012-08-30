@@ -1,90 +1,119 @@
 var net = require('net');
-var color = require('color-terminal');
 
-function Growl(applicationName, host, port) {
-    this.applicationName = applicationName || 'Growl.js';
-    this.host = host || 'localhost';
-    this.port = port || 23053;
-    this.register();
+String.prototype.capitalize = function() {
+    return this.charAt(0).toUpperCase() + this.slice(1);
+};
+
+String.prototype.format = function() {
+    var args = arguments;
+    return this.replace(/{(\d+)}/g, function(match, number) { 
+        return (typeof args[number] != 'undefined' ? args[number] : match);
+    });
+};
+
+/* Send a "Growl Network Transfer Protocol" (GNTP) request to the local growl
+   server, with default port of 23053. Callback is given a GNTP response. */
+function sendRequest(request, callback) {
+    var host = 'localhost', port = 23053, socket;
+
+    socket = net.connect(port, host, function() {
+        socket.write(request);
+    });
+
+    socket.on('error', function() {
+        callback(new Error('Error while sending request to "{0}:{1}"'.format(host, port)));
+        socket.destroy();
+    });
+
+    socket.on('data', function(response) {
+        callback(null, response);
+        socket.end();
+    });
 }
 
-Growl.prototype.register = function() {
-    this.gntp(
-        'GNTP/1.0 REGISTER NONE\r\n' +
-        'Application-Name: ButtHurt\r\n' +
-        'Notifications-Count: 1\r\n' +
-        '\r\n' +
-        'Notification-Name: General Notification\r\n' +
-        'Notification-Enabled: True\r\n' +
-        '\r\n'
-    );
-};
+/* Parse a GNTP response by separating the header and body. */
+function parseResponse(response) {
+    var parsed = {}, header, body;
+    response = response.split('\r\n');
 
-Growl.prototype.notify = function(title, text) {
-    this.gntp(
-        'GNTP/1.0 NOTIFY NONE\r\n' +
-        'Application-Name: ButtHurt\r\n' +
-        'Notification-Name: General Notification\r\n' +
-        'Notification-Title: '+ title +'\r\n' +
-        'Notification-Text: '+ text +'\r\n' +
-        '\r\n'
-    );
-};
+    header = response[0];
+    body = response.slice(1);
 
-Growl.prototype.gntp = function(request) {
-    var client = net.connect({ port: this.port }, function() {
-        request.color('green');
-        client.write(request);
+    parsed.state = header.match(/-[A-Z]*/)[0];
+    parsed.body = {}; 
+    body.forEach(function(line) {
+        line = line.split(': ');
+        parsed.body[line[0]] = line[1];
     });
 
-    client.on('data', function(data) {
-        data.toString().color('yellow');
+    console.log(parsed);
+}
+
+function createNotifier(name, labels) {
+    return function(text, label, options, callback) {
+        var request;
+
+        if (typeof options === 'function') {
+            callback = options;
+            options = undefined;
+        }
+
+        /* Build up GNTP notify request for the given application. */
+        request = '';
+        request += 'GNTP/1.0 NOTIFY NONE\r\n'
+        request += 'Application-Name: {0}\r\n'.format(name);
+        request += 'Notification-Name: {0}\r\n'.format(label);
+        request += 'Notification-Text: {0}\r\n'.format(text);
+
+        if (options && options.title) {
+            request += 'Notification-Title: {0}\r\n'.format(options.title);
+        }
+
+        if (options && typeof options.sticky === 'boolean') {
+            request += 'Notification-Sticky: {0}\r\n'.format(options.sticky.toString().capitalize());
+        }
+        
+        request += 'Notification-ID: 1234\r\n';
+        request += 'Notification-Coalescing-ID: 1234\r\n';
+        request += 'Notification-Callback-Context: SOMECONTEX\r\n';
+        request += 'Notification-Callback-Context-Type: string\r\n\r\n';
+
+        /* Send GNTP notify request. */
+        sendRequest(request, function(err, response) {
+            if (err) {
+                console.log('Notify failed:', err);
+            }
+
+            console.log(response.toString());
+        });
+    }; 
+}
+
+function register(name, notifications, icon) {
+    var request, labels;
+    icon = icon || '';
+
+    /* Build up GNTP register request for this application and its 
+       notifications. */
+    request = '';
+    request += 'GNTP/1.0 REGISTER NONE\r\n';
+    request += 'Application-Name: {0}\r\n'.format(name);
+    request += 'Notifications-Count: {0}\r\n\r\n'.format(notifications.length);
+    
+    labels = [];
+    notifications.forEach(function(notification) {
+        labels.push(notification.label);
+        request += 'Notification-Name: {0}\r\n'.format(notification.label);
+        request += 'Notification-Display-Name: {0}\r\n'.format(notification.name || notification.label);
+        request += 'Notification-Enabled: {0}\r\n\r\n'.format(notification.enabled.toString().capitalize());
     });
-};
 
-var me = new Growl();
-setTimeout(function() {
-me.notify('Hello There!', 'This is an example message.');
-}, 500);
-
-
-    /* Register with Growl. */
-    /*
-    var tcp = net.connect({ port: this.port }, function() {
-        //tcp.write('GNTP/1.0 REGISTER NONE\r\n' +
-        // 'Application-Name: MyApplication\r\n' +
-        // 'Notification-Count: 1\r\n' +
-        // '\r\n' +
-        // 'Notification-Name: GenericNotification\r\n' +
-        // 'Notification-Enabled: True\r\n' +
-        // '\r\n'); 
+    /* Send registration request. */
+    sendRequest(request, function(err, response) {
+        console.log(response.toString());
     });
 
-    tcp.on('data', function(data) {
-        console.log('RESPONSE:');
-        console.log(data.toString());
-        console.log('-------------------------');
-    });
-    */
+    return createNotifier(name, labels);
+}
 
-/*
-Growl.prototype.notify = function(title, text) {
-    var tcp = net.connect({ port: 23053 }, function() {
-        tcp.write('GNTP/1.0 NOTIFY NONE\r\n');
-        tcp.write('Application-Name: MyApplication\r\n');
-        tcp.write('Notification-Name: SomeNotification\r\n');
-        tcp.write('Notification-Title: Renold\r\n');
-        tcp.write('Notification-Text: Hello, world\r\n');
-        tcp.write('\r\n');
-    });
-
-    tcp.on('data', function(data) {
-        console.log('RESPONSE:');
-        console.log(data.toString());
-        console.log('-------------------------');
-    });
-};
-
-var me = new Growl(); 
-me.notify('Hello There', 'This must work');
-*/
+exports.register = register;
