@@ -1,4 +1,5 @@
 var net = require('net');
+var events = require('events');
 
 String.prototype.capitalize = function() {
     return this.charAt(0).toUpperCase() + this.slice(1);
@@ -11,8 +12,24 @@ String.prototype.format = function() {
     });
 };
 
+function checkError(err) {
+    if (err) {
+        console.log(err);
+    }
+}
+
 /* Send a "Growl Network Transfer Protocol" (GNTP) request to the local growl
-   server, with default port of 23053. Callback is given a GNTP response. */
+   server, with default port of 23053. Callback is given a GNTP response. An 
+   example GNTP request: 
+
+   GNTP/1.0 REGISTER NONE
+   Application-Name: SurfWriter
+   Notifications-Count: 1
+
+   Notification-Name: Download Complete
+   Notification-Display-Name: Download completed
+   Notification-Enabled: True */
+
 function sendRequest(request, callback) {
     var host = 'localhost', port = 23053, socket;
 
@@ -27,31 +44,48 @@ function sendRequest(request, callback) {
 
     socket.on('data', function(response) {
         callback(null, response);
-        socket.end();
+        //socket.end();
     });
 }
 
-/* Parse a GNTP response by separating the header and body. */
+/* Parse a GNTP response and return its state (OK, ERROR, CALLBACK) and the
+   headers. An example GNTP response: 
+
+   GNTP/1.0 -OK NONE
+   Response-Action: REGISTER */
+
 function parseResponse(response) {
-    var parsed = {}, header, body;
-    response = response.split('\r\n');
+    var parsed, headers;
+    console.log('resp',response.toString());
+    response = response.toString().split('\r\n');
 
-    header = response[0];
-    body = response.slice(1);
+    parsed = { 
+        state: response[0].match(/-[A-Z]*/)[0].slice(1), 
+        headers: {} 
+    };
 
-    parsed.state = header.match(/-[A-Z]*/)[0];
-    parsed.body = {}; 
-    body.forEach(function(line) {
-        line = line.split(': ');
-        parsed.body[line[0]] = line[1];
+    headers = response.slice(1).filter(function(line) {
+        return line.trim().length > 0;
     });
 
-    console.log(parsed);
+    headers.forEach(function(line) {
+        line = line.split(': ');
+        parsed.headers[line[0]] = line[1];
+    });
+
+    return parsed;
 }
+
+/* ... */
 
 function createNotifier(name, labels) {
-    return function(text, label, options, callback) {
-        var request;
+    var count = 0;
+
+    /* ... */
+
+    return function(text, options, callback) {
+        events.EventEmitter.call(this);
+        var request, attempts;
 
         if (typeof options === 'function') {
             callback = options;
@@ -62,8 +96,13 @@ function createNotifier(name, labels) {
         request = '';
         request += 'GNTP/1.0 NOTIFY NONE\r\n'
         request += 'Application-Name: {0}\r\n'.format(name);
-        request += 'Notification-Name: {0}\r\n'.format(label);
         request += 'Notification-Text: {0}\r\n'.format(text);
+
+        if (options && options.label) {
+            request += 'Notification-Name: {0}\r\n'.format(options.label);
+        } else {
+            request += 'Notification-Name: {0}\r\n'.format(labels[0]);
+        }
 
         if (options && options.title) {
             request += 'Notification-Title: {0}\r\n'.format(options.title);
@@ -72,22 +111,36 @@ function createNotifier(name, labels) {
         if (options && typeof options.sticky === 'boolean') {
             request += 'Notification-Sticky: {0}\r\n'.format(options.sticky.toString().capitalize());
         }
-        
-        request += 'Notification-ID: 1234\r\n';
-        request += 'Notification-Coalescing-ID: 1234\r\n';
-        request += 'Notification-Callback-Context: SOMECONTEX\r\n';
-        request += 'Notification-Callback-Context-Type: string\r\n\r\n';
+
+        count += 1;
+        request += 'Notification-ID: {0}\r\n'.format(count);
+        request += 'Notification-Coalescing-ID: {0}\r\n'.format(options.replace || count);
+        request += 'Notification-Callback-Context: SOMECONTEXT\r\n';
+        request += 'Notification-Callback-Context-Type: string\r\n';
+        request += '\r\n';
 
         /* Send GNTP notify request. */
-        sendRequest(request, function(err, response) {
-            if (err) {
-                console.log('Notify failed:', err);
-            }
+        attempts = 0;
+        function sendNotification(id) {
+            sendRequest(request, function(err, response) {
+                checkError(err);
 
-            console.log(response.toString());
-        });
+                response = parseResponse(response);
+
+                /* ... */
+                if (response.headers['Error-Code'] == 402 && attempts < 10) {
+                    setTimeout(sendNotification, 250 * (++attempts));
+                }
+            });
+        }
+
+        sendNotification(count);
+
+        return count;
     }; 
 }
+
+/* ... explain arguments */
 
 function register(name, notifications, icon) {
     var request, labels;
@@ -110,7 +163,8 @@ function register(name, notifications, icon) {
 
     /* Send registration request. */
     sendRequest(request, function(err, response) {
-        console.log(response.toString());
+        checkError(err);
+        parseResponse(response);
     });
 
     return createNotifier(name, labels);
