@@ -1,173 +1,181 @@
 var net = require('net');
 var events = require('events');
 
-String.prototype.capitalize = function() {
-    return this.charAt(0).toUpperCase() + this.slice(1);
-};
 
-String.prototype.format = function() {
-    var args = arguments;
-    return this.replace(/{(\d+)}/g, function(match, number) { 
-        return (typeof args[number] != 'undefined' ? args[number] : match);
+function sendRequest(req, callback, attempts) {
+    var host = 'localhost', 
+        port = 23053, 
+        maxAttempts = 5,
+        waitFor = 750,
+        resp = '',
+        socket = net.connect(port, host, function() {
+            socket.write(req);
+        });
+
+    attempts = attempts || 0;
+
+    socket.on('data', function(data) {
+        resp += data.toString();
+        if (resp.slice(resp.length - 4) === '\r\n\r\n') { // ends with two CRLF, we have a complete response
+            resp = parseResponse(resp); 
+            console.log(resp);
+            if (resp.state === 'ERROR' || resp.state === 'CALLBACK') { // ERROR and CALLBACK don't close connection automatically
+                socket.end();
+            } else { // make response a string again, so the next complete response will be alone
+                resp = '';
+            }
+        }
     });
-};
 
-function checkError(err) {
-    if (err) {
-        console.log(err);
-    }
-}
-
-/* Send a "Growl Network Transfer Protocol" (GNTP) request to the local growl
-   server, with default port of 23053. Callback is given a GNTP response. An 
-   example GNTP request: 
-
-   GNTP/1.0 REGISTER NONE
-   Application-Name: SurfWriter
-   Notifications-Count: 1
-
-   Notification-Name: Download Complete
-   Notification-Display-Name: Download completed
-   Notification-Enabled: True */
-
-function sendRequest(request, callback) {
-    var host = 'localhost', port = 23053, socket;
-
-    socket = net.connect(port, host, function() {
-        socket.write(request);
+    socket.on('end', function() {
+        /* Retry on 200 (timed out), 401 (unknown app), 402 (unknown notification). */
+        if (['200', '401', '402'].indexOf(resp['Error-Code']) >= 0 && attempts < maxAttempts) {
+            setTimeout(function() {
+                attempts += 1;
+                sendRequest(req, callback, attempts);
+            }, waitFor);
+        } else {
+            callback(null, resp);
+        }
     });
 
     socket.on('error', function() {
-        callback(new Error('Error while sending request to "{0}:{1}"'.format(host, port)));
+        callback(new Error('Error while sending request to "'+ host +':'+ port +'"'));
         socket.destroy();
-    });
-
-    socket.on('data', function(response) {
-        callback(null, response);
-        //socket.end();
     });
 }
 
-/* Parse a GNTP response and return its state (OK, ERROR, CALLBACK) and the
-   headers. An example GNTP response: 
-
-   GNTP/1.0 -OK NONE
-   Response-Action: REGISTER */
 
 function parseResponse(response) {
-    var parsed, headers;
-    console.log('resp',response.toString());
-    response = response.toString().split('\r\n');
+    var parsed = {};
 
-    parsed = { 
-        state: response[0].match(/-[A-Z]*/)[0].slice(1), 
-        headers: {} 
-    };
+    response = response.toString()
+        .split('\r\n')
+        .filter(function(ln) {
+            return ln.trim() !== '';
+        });
 
-    headers = response.slice(1).filter(function(line) {
-        return line.trim().length > 0;
-    });
+    parsed.state = response[0].match(/-[A-Z]*/)[0].slice(1);
 
-    headers.forEach(function(line) {
-        line = line.split(': ');
-        parsed.headers[line[0]] = line[1];
+    response.slice(1).forEach(function(ln) {
+        ln = ln.split(': ');
+        parsed[ln[0]] = ln[1];
     });
 
     return parsed;
 }
 
-/* ... */
 
-function createNotifier(name, labels) {
-    var count = 0;
+function buildRequest(type, headers) {
+    var crlf = '\r\n',
+        request = 'GNTP/1.0 '+ type +' NONE'+ crlf;
 
-    /* ... */
-
-    return function(text, options, callback) {
-        events.EventEmitter.call(this);
-        var request, attempts;
-
-        if (typeof options === 'function') {
-            callback = options;
-            options = undefined;
-        }
-
-        /* Build up GNTP notify request for the given application. */
-        request = '';
-        request += 'GNTP/1.0 NOTIFY NONE\r\n'
-        request += 'Application-Name: {0}\r\n'.format(name);
-        request += 'Notification-Text: {0}\r\n'.format(text);
-
-        if (options && options.label) {
-            request += 'Notification-Name: {0}\r\n'.format(options.label);
-        } else {
-            request += 'Notification-Name: {0}\r\n'.format(labels[0]);
-        }
-
-        if (options && options.title) {
-            request += 'Notification-Title: {0}\r\n'.format(options.title);
-        }
-
-        if (options && typeof options.sticky === 'boolean') {
-            request += 'Notification-Sticky: {0}\r\n'.format(options.sticky.toString().capitalize());
-        }
-
-        count += 1;
-        request += 'Notification-ID: {0}\r\n'.format(count);
-        request += 'Notification-Coalescing-ID: {0}\r\n'.format(options.replace || count);
-        request += 'Notification-Callback-Context: SOMECONTEXT\r\n';
-        request += 'Notification-Callback-Context-Type: string\r\n';
-        request += '\r\n';
-
-        /* Send GNTP notify request. */
-        attempts = 0;
-        function sendNotification(id) {
-            sendRequest(request, function(err, response) {
-                checkError(err);
-
-                response = parseResponse(response);
-
-                /* ... */
-                if (response.headers['Error-Code'] == 402 && attempts < 10) {
-                    setTimeout(sendNotification, 250 * (++attempts));
-                }
-            });
-        }
-
-        sendNotification(count);
-
-        return count;
-    }; 
-}
-
-/* ... explain arguments */
-
-function register(name, notifications, icon) {
-    var request, labels;
-    icon = icon || '';
-
-    /* Build up GNTP register request for this application and its 
-       notifications. */
-    request = '';
-    request += 'GNTP/1.0 REGISTER NONE\r\n';
-    request += 'Application-Name: {0}\r\n'.format(name);
-    request += 'Notifications-Count: {0}\r\n\r\n'.format(notifications.length);
+    headers = headers.map(function(header) {
+        var field, value;
+        if (header === null) return crlf;
+        field = Object.keys(header)[0];
+        value = header[field];
+        if (header.required || value !== undefined) 
+            return field +': '+ value + crlf;
+    });
     
-    labels = [];
-    notifications.forEach(function(notification) {
-        labels.push(notification.label);
-        request += 'Notification-Name: {0}\r\n'.format(notification.label);
-        request += 'Notification-Display-Name: {0}\r\n'.format(notification.name || notification.label);
-        request += 'Notification-Enabled: {0}\r\n\r\n'.format(notification.enabled.toString().capitalize());
+    headers = headers.filter(function(header) {
+        return header !== undefined;
     });
 
-    /* Send registration request. */
-    sendRequest(request, function(err, response) {
-        checkError(err);
-        parseResponse(response);
-    });
-
-    return createNotifier(name, labels);
+    return request + headers.join('');
 }
 
-exports.register = register;
+
+function getLabels(notifications) {
+    return notifications.map(function(notif) {
+        return notif.label;
+    });
+}
+
+
+function Growl() {
+    this.appname = 'Growl.js';
+    this.notifications = undefined;
+    this.labels = undefined;
+    this.count = 0;
+    this.register(this.appname, this.notifications);
+}
+
+
+Growl.prototype.register = function(appname, appicon, notifications) {
+    var headers;
+
+    if (typeof appicon === 'object') {
+        notifications = appicon;
+        appicon = undefined;
+    }
+
+    if (notifications === undefined || !notifications.length) {
+        notifications = [{ label: 'default', dispname: 'Default Notification', enabled: true }];
+    }
+
+    this.appname = appname;
+    this.notifications = notifications;
+    this.labels = getLabels(notifications);
+
+    headers = [
+        { 'Application-Name': appname, required: true },
+        { 'Application-Icon': appicon },
+        { 'Notifications-Count': notifications.length, required: true },
+        null
+    ];
+
+    notifications.forEach(function(notif) {
+        headers = headers.concat([
+            { 'Notification-Name': notif.label, required: true },
+            { 'Notification-Display-Name': notif.dispname },
+            { 'Notification-Enabled': notif.enabled ? 'True' : 'False' },
+            { 'Notification-Icon': undefined },
+            null
+        ]);
+    });
+
+    sendRequest(buildRequest('REGISTER', headers), function(err, resp) {
+        if (err) console.log(err);
+    });
+};
+
+
+Growl.prototype.notify = function(text, opts, callback) {
+    var headers;
+    opts = opts || {};
+
+    if (typeof opts === 'function') {
+        callback = opts;
+        opts = {};
+    }
+
+    this.count += 1;
+
+    headers = [
+        { 'Application-Name': this.appname, required: true },
+        { 'Notification-Name': opts.label || this.labels[0], required: true },
+        { 'Notification-ID': this.count },
+        { 'Notification-Title': opts.title },
+        { 'Notification-Text': text },
+        { 'Notification-Sticky': opts.sticky ? 'True' : 'False' },
+        { 'Notification-Priority': opts.priority },
+        { 'Notification-Icon': opts.icon },
+        { 'Notification-Coalescing-ID': opts.replace },
+        { 'Notification-Callback-Context': callback ? 'context' : undefined },
+        { 'Notification-Callback-Context-Type': callback ? 'string' : undefined },
+        { 'Notification-Callback-Target': undefined },
+        null
+    ];
+
+    sendRequest(buildRequest('NOTIFY', headers), function(err, resp) {
+        if (err) console.log(err);
+        if (resp.state === 'CALLBACK' && callback) {
+            callback(resp['Notification-Callback-Result'].toLowerCase());
+        }
+    });
+};
+
+
+module.exports = new Growl;
