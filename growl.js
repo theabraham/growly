@@ -12,13 +12,14 @@ function sendRequest(req, callback, attempts) {
             socket.write(req);
         });
 
+    console.log(req);
     attempts = attempts || 0;
 
     socket.on('data', function(data) {
         resp += data.toString();
         if (resp.slice(resp.length - 4) === '\r\n\r\n') { // ends with two CRLF, we have a complete response
+            //console.log(resp);
             resp = parseResponse(resp); 
-            console.log(resp);
             if (resp.state === 'ERROR' || resp.state === 'CALLBACK') { // ERROR and CALLBACK don't close connection automatically
                 socket.end();
             } else { // make response a string again, so the next complete response will be alone
@@ -162,7 +163,6 @@ Growl.prototype.notify = function(text, opts, callback) {
         { 'Notification-Sticky': opts.sticky ? 'True' : 'False' },
         { 'Notification-Priority': opts.priority },
         { 'Notification-Icon': opts.icon },
-        { 'Notification-Coalescing-ID': opts.replace },
         { 'Notification-Callback-Context': callback ? 'context' : undefined },
         { 'Notification-Callback-Context-Type': callback ? 'string' : undefined },
         { 'Notification-Callback-Target': undefined },
