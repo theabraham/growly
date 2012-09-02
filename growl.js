@@ -1,5 +1,6 @@
-var net = require('net');
-var events = require('events');
+var net = require('net'),
+    crypto = require('crypto'),
+    fs = require('fs');
 
 
 function sendRequest(req, callback, attempts) {
@@ -8,17 +9,17 @@ function sendRequest(req, callback, attempts) {
         maxAttempts = 5,
         waitFor = 750,
         resp = '',
-        socket = net.connect(port, host, function() {
-            socket.write(req);
-        });
+        socket = net.connect(port, host);
 
-    console.log(req);
     attempts = attempts || 0;
+
+    socket.on('connect', function() {
+        socket.write(req);
+    });
 
     socket.on('data', function(data) {
         resp += data.toString();
         if (resp.slice(resp.length - 4) === '\r\n\r\n') { // ends with two CRLF, we have a complete response
-            //console.log(resp);
             resp = parseResponse(resp); 
             if (resp.state === 'ERROR' || resp.state === 'CALLBACK') { // ERROR and CALLBACK don't close connection automatically
                 socket.end();
@@ -69,14 +70,28 @@ function parseResponse(response) {
 
 function buildRequest(type, headers) {
     var crlf = '\r\n',
-        request = 'GNTP/1.0 '+ type +' NONE'+ crlf;
+        request = 'GNTP/1.0 '+ type +' NONE'+ crlf,
+        images = [];
 
     headers = headers.map(function(header) {
-        var field, value;
         if (header === null) return crlf;
-        field = Object.keys(header)[0];
-        value = header[field];
-        if (header.required || value !== undefined) 
+        var field = Object.keys(header)[0],
+            value = header[field],
+            image, digest;
+
+        if (header.hasIcon && /\.png|gif|jpeg|jpg$/.test(value)) {
+            image = fs.readFileSync(value);
+            digest = crypto.createHash('md5').update(image).digest('hex'); 
+            value = 'x-growl-resource://'+ digest;
+
+            images.push(
+                'Identifier: ' + digest + crlf +
+                'Length: ' + image.length + crlf + crlf +
+                image + crlf + crlf
+            );
+        }
+
+        if (header.required || value !== undefined)
             return field +': '+ value + crlf;
     });
     
@@ -84,7 +99,7 @@ function buildRequest(type, headers) {
         return header !== undefined;
     });
 
-    return request + headers.join('');
+    return request + headers.join('') + images.join('');
 }
 
 
@@ -100,7 +115,7 @@ function Growl() {
     this.notifications = undefined;
     this.labels = undefined;
     this.count = 0;
-    this.register(this.appname, this.notifications);
+    this.register(this.appname);
 }
 
 
@@ -122,7 +137,7 @@ Growl.prototype.register = function(appname, appicon, notifications) {
 
     headers = [
         { 'Application-Name': appname, required: true },
-        { 'Application-Icon': appicon },
+        { 'Application-Icon': appicon, hasIcon: true },
         { 'Notifications-Count': notifications.length, required: true },
         null
     ];
@@ -132,7 +147,7 @@ Growl.prototype.register = function(appname, appicon, notifications) {
             { 'Notification-Name': notif.label, required: true },
             { 'Notification-Display-Name': notif.dispname },
             { 'Notification-Enabled': notif.enabled ? 'True' : 'False' },
-            { 'Notification-Icon': undefined },
+            { 'Notification-Icon': notif.icon, hasIcon: true},
             null
         ]);
     });
@@ -162,7 +177,7 @@ Growl.prototype.notify = function(text, opts, callback) {
         { 'Notification-Text': text },
         { 'Notification-Sticky': opts.sticky ? 'True' : 'False' },
         { 'Notification-Priority': opts.priority },
-        { 'Notification-Icon': opts.icon },
+        { 'Notification-Icon': opts.icon, hasIcon: true },
         { 'Notification-Callback-Context': callback ? 'context' : undefined },
         { 'Notification-Callback-Context-Type': callback ? 'string' : undefined },
         { 'Notification-Callback-Target': undefined },
