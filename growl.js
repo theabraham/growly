@@ -34,7 +34,8 @@ GNTP.prototype.add = function(name, val) {
     if (val === undefined) 
         return;
 
-    if (/-Icon/.test(name) && /\.(png|gif|jpeg|jpg)$/.test(val)) {
+    /* Handle icon files when they're not URLs. */
+    if (/-Icon/.test(name) && !/^https?:\/\//.test(val) && /\.(png|gif|jpe?g)$/.test(val)) {
         icon = fs.readFileSync(val);
         identifier = crypto.createHash('md5').update(icon).digest('hex');
         val = 'x-growl-resource://' + identifier;
@@ -42,7 +43,7 @@ GNTP.prototype.add = function(name, val) {
         this.resources += 'Identifier: ' + identifier + nl;
         this.resources += 'Length: ' + icon.length + nl + nl;
         this.resources += icon + nl + nl;
-    }
+    } 
 
     this.request += name + ': ' + val + nl;
 };
