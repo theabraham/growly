@@ -1,4 +1,4 @@
-### Growly ###
+# Growly #
 
 Simple zero-dependency Growl notifications using GNTP.
 
@@ -18,11 +18,11 @@ This module uses the Growl Network Transport Protocol (GNTP) which was implement
 
 Sending a minimal Growl notification:
 
-   var growly = require('growly');
+    var growly = require('growly');
 
-   growly.notify('This is as easy as it gets', { title: 'Hello, World!' });
+    growly.notify('This is as easy as it gets', { title: 'Hello, World!' });
 
-More examples can be found in the `example/` directory.
+More examples can be found in the *example/* directory.
 
 ## Usage ##
 
