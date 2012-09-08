@@ -6,11 +6,15 @@ Simple zero-dependency Growl notifications using GNTP.
 
 Install growly using `npm`:
 
-    npm install growly
+```
+npm install growly
+```
 
 And then require it:
 
-    var growly = require('growly');
+```javascript
+var growly = require('growly');
+```
 
 This module uses the Growl Network Transport Protocol (GNTP) which was implemented in Growl since version 1.3, so you **must have an appropriate version of Growl installed** for Growly to work.
 
@@ -18,9 +22,11 @@ This module uses the Growl Network Transport Protocol (GNTP) which was implement
 
 Sending a minimal Growl notification:
 
-    var growly = require('growly');
+```javascript
+var growly = require('growly');
 
-    growly.notify('This is as easy as it gets', { title: 'Hello, World!' });
+growly.notify('This is as easy as it gets', { title: 'Hello, World!' });
+```
 
 More examples can be found in the *example/* directory.
 
@@ -41,10 +47,12 @@ Registers a new application with Growl. Registration is completely optional. Use
 
 An example:
 
-    growly.register('My Application', 'path/to/icon.png', [
-        { label: 'success', dispname: 'Success' },
-        { label: 'warning', dispname: 'Warning', enabled: false }
-    ]);
+```javascript
+growly.register('My Application', 'path/to/icon.png', [
+    { label: 'success', dispname: 'Success' },
+    { label: 'warning', dispname: 'Warning', enabled: false }
+]);
+```
 
 ### Growly.notify(text, [opts], [callback]) ###
 
@@ -60,10 +68,12 @@ Sends a Growl notification. If an application wasn't registered beforehand with 
 
 An example:
 
-    /* Assuming an application was registered with a notification type labeled 'warning'. */
-    growly.notify('Stuffs broken!', { label: 'warning' }, function(err, action) {
-        console.log('Action:', action);
-    });
+```javascript
+/* Assuming an application was registered with a notification type labeled 'warning'. */
+growly.notify('Stuffs broken!', { label: 'warning' }, function(err, action) {
+    console.log('Action:', action);
+});
+```
 
 ## License ##
 
