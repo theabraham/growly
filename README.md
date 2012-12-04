@@ -61,7 +61,7 @@ Sends a Growl notification. If an application wasn't registered beforehand with 
   - `text` the body of the notification.
   - `opts` an object with the following properties:
     - `.title` title of the notification.
-    - `.icon` url, file path, or Buffer instance for the notification.
+    - `.icon` url, file path, or Buffer instance for the notification's icon.
     - `.sticky` whether or not to sticky the notification (defaults to false.)
     - `.label` type of notification to use (defaults to the first registered notification type.)
     - `.priority` the priority of the notification from lowest (-2) to highest (2).
