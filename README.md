@@ -34,9 +34,9 @@ More examples can be found in the *example/* directory.
 
 The growly module exposes only two methods: `Growly.register()` and `Growly.notify()`. 
 
-### Growly.register(appname, [appicon], [notifications]) ###
+### Growly.register(appname, [appicon], [notifications], [callback]) ###
 
-Registers a new application with Growl. Registration is completely optional. Useful if you want your application, with its own icon and types of notifications, to show up in Growl's prefence panel.
+Registers a new application with Growl. Registration is completely optional since it will be performed automatically for you with sensible defaults. Useful if you want your application, with its own icon and types of notifications, to show up in Growl's prefence panel.
 
   - `appname` the name of the application (required.)
   - `appicon` url, file path, or Buffer instance for an application icon image.
@@ -44,6 +44,7 @@ Registers a new application with Growl. Registration is completely optional. Use
     - `.label` name used to identify the type of notification being used (required.)
     - `.dispname` name users will see in Growl's preference panel (defaults to `.label`.)
     - `.enabled` whether or not notifications of this type are enabled (defaults to true.)
+  - `callback` called when the registration completes; if registration fails, the first argument will be an Error object.
 
 An example:
 
@@ -51,12 +52,14 @@ An example:
 growly.register('My Application', 'path/to/icon.png', [
     { label: 'success', dispname: 'Success' },
     { label: 'warning', dispname: 'Warning', enabled: false }
-]);
+], function(err) {
+    console.log(err || 'Registration successful!');
+});
 ```
 
 ### Growly.notify(text, [opts], [callback]) ###
 
-Sends a Growl notification. If an application wasn't registered beforehand with `growly.register()`, a default application will be used internally.
+Sends a Growl notification. If an application wasn't registered beforehand with `growly.register()`, a default application will automatically be registered beforesending the notification.
 
   - `text` the body of the notification.
   - `opts` an object with the following properties:
