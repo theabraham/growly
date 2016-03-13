@@ -1,22 +1,15 @@
-# Growly #
+# Growly (fork)#
 
 Simple zero-dependency Growl notifications using GNTP.
 
+Forked from [theabraham/growly](https://github.com/theabraham/growly),
+because I needed extra functionality for use with [atom-growl](https://github.com/onderweg/atom-growl])
+
 ## Installation ##
 
-Install growly using `npm`:
-
-```
-npm install growly
-```
-
-And then require it:
-
-```javascript
-var growly = require('growly');
-```
-
-This module uses the Growl Network Transport Protocol (GNTP) which was implemented in Growl since version 1.3, so you **must have an appropriate version of Growl installed** for Growly to work.
+- **This fork is not available on NPM**. Please consider using the
+original Growly library - which _is_ available on NPM - if you want to use Growly in your project.
+- This module uses the Growl Network Transport Protocol (GNTP) which was implemented in Growl since version 1.3, so you **must have an appropriate version of Growl installed** for Growly to work.
 
 ## Example ##
 
@@ -68,6 +61,7 @@ Sends a Growl notification. If an application wasn't registered beforehand with 
     - `.sticky` whether or not to sticky the notification (defaults to false.)
     - `.label` type of notification to use (defaults to the first registered notification type.)
     - `.priority` the priority of the notification from lowest (-2) to highest (2).
+    - `.coalescingId` a optional unique ID for the notification.
   - `callback` called when the user has closed/clicked the notification. The callback is passed an Error object `err` as the first argument when the notification fails; otherwise, the second argument `action` is a string that'll describe which action has been taken by the user (either 'closed' or 'clicked'.)
 
 An example:
